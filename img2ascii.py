@@ -22,7 +22,7 @@ def _convert(source, *, full=False, color=True, alpha=True, size=tuple(), charac
         except Exception as e:
             sys.stderr.write("I was already doing poor error handling. At least now I'm only handling the errors poorly.\n")
             return 1
-    if os.path.exists(source):
+    elif os.path.exists(source):
         img = Image.open(source)
     else:
         sys.stderr.write("Could not locate provided filepath.\n")
