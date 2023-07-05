@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import sys
 import requests
 import argparse
@@ -8,14 +9,24 @@ from PIL import Image
 
 
 def _convert(source, *, full=False, color=True, alpha=True, size=tuple(), characters=' .,:;+*%#@'):
+    if re.match(r"https?\:\/\/", source):
+        try:
+            with requests.get(source, timeout=3) as response:
+                img = Image.open(io.BytesIO(response.content))
+        except TimeoutError:
+            sys.stderr.write("Request for URL has timed out.\n")
+            return 1
+        except KeyboardInterrupt as e:
+            sys.stderr.write("\nCancelled by user.\n")
+            return 1
+        except Exception as e:
+            sys.stderr.write("I was already doing poor error handling. At least now I'm only handling the errors poorly.\n")
+            return 1
     if os.path.exists(source):
         img = Image.open(source)
     else:
-        try:
-            with requests.get(source) as response:
-                img = Image.open(io.BytesIO(response.content))
-        except:
-            raise ValueError("invalid url")
+        sys.stderr.write("Could not locate provided filepath.\n")
+        return 1
 
 
     if color is True and alpha is True:
@@ -65,7 +76,7 @@ def convert(args):
     source = args.source
     size = args.size
     full = args.full
-    print(_convert(source, size=size, full=full))
+    return _convert(source, size=size, full=full)
 
 
 def main(argv=None):
