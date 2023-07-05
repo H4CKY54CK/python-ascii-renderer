@@ -11,7 +11,7 @@ Use this script as follows:
 Optional arguments include:
 
 - `--full` to color the background as well as the foreground (does not look great)
-- `--size X Y` to resize the image in case your terminal is not the smallest font and fullscreened (which is how I usually demo it). **Note that this ends up being the width and height of characters in your terminal.)**
+- `--size X Y` to resize the image in case your terminal is not the smallest font and fullscreened (which is how I usually demo it). **Note that this ends up being the width and height of characters in your terminal.**
 - `--help`/`-h` because `argparse` is helpful.
 
 ## A few notes
