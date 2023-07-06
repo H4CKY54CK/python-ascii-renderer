@@ -4,101 +4,116 @@ import re
 import sys
 import requests
 import argparse
-import itertools
 from PIL import Image
 
 
-def _convert(source, *, size=tuple(), full=False, output=None, color=True, alpha=True, characters=' .,:;+*%#@'):
-    if re.match(r"https?\:\/\/", source):
+
+
+def convert_image_to_ascii(args):
+    # Allow images to be filepaths or URLs.
+    if re.match(r"(https?\:\/\/)(www\.)?", args.source):
         try:
-            with requests.get(source, timeout=3) as response:
-                img = Image.open(io.BytesIO(response.content))
+            with requests.get(args.source, timeout=args.timeout) as res:
+                img = Image.open(io.BytesIO(res.content))
         except TimeoutError:
-            sys.stderr.write("Request for URL has timed out.\n")
+            sys.stderr.write("[img2ascii error]: request has timed out after %s seconds\n" % (args.timeout,))
             return 1
-        except KeyboardInterrupt as e:
-            sys.stderr.write("\nCancelled by user.\n")
-            return 1
-        except Exception as e:
-            sys.stderr.write("I was already doing poor error handling. At least now I'm only handling the errors poorly.\n")
-            return 1
-    elif os.path.exists(source):
-        img = Image.open(source)
+    elif os.path.exists(args.source):
+        img = Image.open(args.source)
     else:
-        sys.stderr.write("Could not locate provided filepath.\n")
+        sys.stderr.write("[img2ascii error]: invalid path: %r\n" % (args.source,))
         return 1
 
-
-    if color is False:
-        img = img.convert("L")
-    elif alpha is False:
-        img = img.convert("RGB")
-    elif alpha is True:
+    # Strange, I know, but it solves a downsampling quality loss issue.
+    if img.mode in ("RGB", "RGBA"):
         img = img.convert("RGBA")
-
-    if size:
-        img.thumbnail(size)
-
-
-    data = [[] for _ in range(img.height)]
-
-    step = 101 / len(characters) # account for 0
-
-    for x,y in itertools.product(range(img.width), range(img.height)):
-        if color is True and alpha is True:
-            r,g,b,a = img.getpixel((x,y))
-            if full:
-                prefix = "\x1b[48;2;%d;%d;%dm\x1b[38;2;%d;%d;%dm" % (r, g, b, r, g, b)
-            else:
-                prefix = "\x1b[1m\x1b[38;2;%d;%d;%dm" % (r, g, b)
-            suffix = "\x1b[0m"
-        elif color is True and alpha is False:
-            r,g,b = img.getpixel((x,y))
-            if full:
-                prefix = "\x1b[48;2;%d;%d;%dm\x1b[38;2;%d;%d;%dm" % (r, g, b, r, g, b)
-            else:
-                prefix = "\x1b[1m\x1b[38;2;%d;%d;%dm" % (r, g, b)
-            suffix = "\x1b[0m"
-        elif color is False:
-            a = img.getpixel((x,y))
-            prefix = ""
-            suffix = ""
-
-        ix = int((a // 2.55) // step)
-        data[y].append("%s%s" % (prefix, characters[ix]))
-
-    result = '\n'.join(' '.join(c for c in line) + suffix for line in data)
-
-    if output is not None:
-        with open(output, "w") as f:
-            f.write(result)
+    elif img.mode == "L":
+        img = img.convert("L")
     else:
-        print(result)
+        sys.stderr.write("[img2ascii error]: have not implemented mode %r yet\n" % (img.mode,))
+        return 1
+
+    # Basic check for correct size format
+    if args.width or args.height:
+        img.thumbnail((args.width or img.width, args.height or img.height))
+    elif not args.force_size:
+        img.thumbnail(args.size)
+    else:
+        img = img.resize(args.size)
+
+    pixels = img.load()
+    data = [["" for _ in range(img.width)] for _ in range(img.height)]
+
+    fgbg = (38 if args.fg else None, 48 if args.bg else None)
+    for x in range(img.width):
+        for y in range(img.height):
+            r, g, b, a = pixels[x,y]
+
+            # Get appropriate "pixel" from charset.
+            a = int(a // 2.55 // (len(args.chars) + 1))
+            c = args.chars[a]
+
+            data[y][x] = "".join("\x1b[%d;2;%d;%d;%dm" % (z, r, g, b) for z in fgbg if z is not None) + c
+
+    # Add a bold prefix and reset suffix to each line. It's called responsibility.
+    res = "\n".join("\x1b[1m" + " ".join(row) + "\x1b[m" for row in data)
+
+    # # Because I can
+    # pixels = img.load()
+    # data = [[pixels[x,y] for x in range(img.width)] for y in range(img.height)]
+    # data = [[f"\x1b[1;38;2;{r};{g};{b}m{charset[int(a//2.55//(len(charset)+1))]}" for r,g,b,a in item] for item in data]
+    # data = "\n".join(" ".join(item) for item in data) + "\x1b[m"
+    # print(data)
+
+    if isinstance(args.out, str):
+        with open(args.out, "w") as f:
+            f.write(res)
+        if args.quiet is False:
+            print("Wrote to file: %r" % (args.out,))
+    else:
+        if args.quiet is False:
+            print(res)
 
     return 0
-
-
-def convert(args):
-    source = args.source
-    size = args.size
-    full = args.full
-    output = args.output
-    return _convert(source, size=size, full=full, output=output)
 
 
 def main(argv=None):
     argv = (argv or sys.argv)[1:]
     parser = argparse.ArgumentParser()
-    parser.add_argument('source')
-    parser.add_argument("--size", nargs=2, type=int, default=(100,100),
-                        help="desired size of ascii rendition")
-    parser.add_argument("--full", action="store_true",
-                        help="use both fg and bg")
-    parser.add_argument("--output", type=str,
-                        help="write to <output> file instead of stdout (useful for when using from python code)")
-    parser.set_defaults(func=convert)
-    args = parser.parse_args(argv)
-    return args.func(args=args)
+    parser.add_argument("source", type=str,
+                        help="either the path to an image on disk or a URL that points to the image")
+    parser.add_argument("--timeout", "-T", type=int, default="3", metavar="N",
+                        help="Set the max timeout in seconds for requesting a URL. Ignored otherwise. (Default: 3)")
+    parser.add_argument("--chars", "-C", type=str, default=" .,:;+*%#@", metavar="ABC",
+                        help="The character set to use for the varying levels of pixel brightness.")
+    parser.add_argument("--out", "-o", type=str, metavar="FILE",
+                        help="Instead of writing to stdout, dump to the provided file (WILL OVERWRITE EXISTING FILE).")
 
-if __name__ == '__main__':
-    sys.exit(main())
+    # Booleans
+    parser.add_argument("--fg", action=argparse.BooleanOptionalAction, default=True,
+                        help="Whether to use the pixel colors in the foreground of the ASCII. (Default: True)")
+    parser.add_argument("--bg", action=argparse.BooleanOptionalAction, default=False,
+                        help="Whether to use the pixel colors in the background of the ASCII. (Default: False)")
+    parser.add_argument("--force-size", action="store_true",
+                        help="This forces the image to be resized without any regard to aspect ratio. (Yes, this will \
+                              squash your image. If it were perfectly square, you wouldn't need to to do this.).")
+    parser.add_argument("--quiet", "-q", action="store_true",
+                        help="Do not print anything to stdout (Default: False).")
+
+    # Dimension group
+    dgroup = parser.add_mutually_exclusive_group(required=False)
+    dgroup.add_argument("--width", "-x", type=int, metavar="X",
+                        help="Force width to X, preserving aspect ratio. This is useful for ensuring that the final \
+                              ASCII rendition will fit within a given width.")
+    dgroup.add_argument("--height", "-y", type=int, metavar="Y",
+                        help="Force height to Y, preserving aspect ratio. This is useful for ensuring that the final \
+                              ASCII rendition will fit within a given height.")
+    dgroup.add_argument("--size", type=int, nargs=2, default=(100, 100),
+                        help="Resize the image to X width by Y height, preserving aspect ratio. If you need to resize \
+                              while NOT preserving the aspect ratio, add the boolean option --force-size.")
+
+    args = parser.parse_args(argv)
+    return convert_image_to_ascii(args)
+
+if __name__ == "__main__":
+    exit(main())
