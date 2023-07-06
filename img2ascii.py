@@ -8,7 +8,7 @@ import itertools
 from PIL import Image
 
 
-def _convert(source, *, full=False, color=True, alpha=True, size=tuple(), characters=' .,:;+*%#@'):
+def _convert(source, *, size=tuple(), full=False, output=None, color=True, alpha=True, characters=' .,:;+*%#@'):
     if re.match(r"https?\:\/\/", source):
         try:
             with requests.get(source, timeout=3) as response:
@@ -29,12 +29,12 @@ def _convert(source, *, full=False, color=True, alpha=True, size=tuple(), charac
         return 1
 
 
-    if color is True and alpha is True:
-        img = img.convert('RGBA')
-    elif color is True and alpha is False:
-        img = img.convert('RGB')
-    elif color is False:
-        img = img.convert('L')
+    if color is False:
+        img = img.convert("L")
+    elif alpha is False:
+        img = img.convert("RGB")
+    elif alpha is True:
+        img = img.convert("RGBA")
 
     if size:
         img.thumbnail(size)
@@ -69,22 +69,33 @@ def _convert(source, *, full=False, color=True, alpha=True, size=tuple(), charac
 
     result = '\n'.join(' '.join(c for c in line) + suffix for line in data)
 
-    return result
+    if output is not None:
+        with open(output, "w") as f:
+            f.write(result)
+    else:
+        print(result)
+
+    return 0
 
 
 def convert(args):
     source = args.source
     size = args.size
     full = args.full
-    return _convert(source, size=size, full=full)
+    output = args.output
+    return _convert(source, size=size, full=full, output=output)
 
 
 def main(argv=None):
     argv = (argv or sys.argv)[1:]
     parser = argparse.ArgumentParser()
     parser.add_argument('source')
-    parser.add_argument("--size", nargs=2, type=int, default=(100,100), help="desired size of ascii rendition")
-    parser.add_argument("--full", action="store_true", help="use both fg and bg")
+    parser.add_argument("--size", nargs=2, type=int, default=(100,100),
+                        help="desired size of ascii rendition")
+    parser.add_argument("--full", action="store_true",
+                        help="use both fg and bg")
+    parser.add_argument("--output", type=str,
+                        help="write to <output> file instead of stdout (useful for when using from python code)")
     parser.set_defaults(func=convert)
     args = parser.parse_args(argv)
     return args.func(args=args)
