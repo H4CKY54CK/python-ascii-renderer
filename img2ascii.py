@@ -8,7 +8,6 @@ from PIL import Image
 
 
 
-
 def convert_image_to_ascii(args):
     # Allow images to be filepaths or URLs.
     if re.match(r"(https?\:\/\/)(www\.)?", args.source):
@@ -24,7 +23,8 @@ def convert_image_to_ascii(args):
         sys.stderr.write("[img2ascii error]: invalid path: %r\n" % (args.source,))
         return 1
 
-    # Strange, I know, but it solves a downsampling quality loss issue.
+    # It may seem strange to convert it to itself, but it solves a specific downsampling quality loss issue.
+    # Also, convert to RGBA if the image is RGB. That way, we have a default alpha value without any fuss.
     if img.mode in ("RGB", "RGBA"):
         img = img.convert("RGBA")
     elif img.mode == "L":
@@ -58,16 +58,9 @@ def convert_image_to_ascii(args):
     # Add a bold prefix and reset suffix to each line. It's called responsibility.
     res = "\n".join("\x1b[1m" + " ".join(row) + "\x1b[m" for row in data)
 
-    # # Because I can
-    # pixels = img.load()
-    # data = [[pixels[x,y] for x in range(img.width)] for y in range(img.height)]
-    # data = [[f"\x1b[1;38;2;{r};{g};{b}m{charset[int(a//2.55//(len(charset)+1))]}" for r,g,b,a in item] for item in data]
-    # data = "\n".join(" ".join(item) for item in data) + "\x1b[m"
-    # print(data)
-
     if isinstance(args.out, str):
         with open(args.out, "w") as f:
-            f.write(res)
+            f.write(res + "\n")
         if args.quiet is False:
             print("Wrote to file: %r" % (args.out,))
     else:
@@ -79,41 +72,54 @@ def convert_image_to_ascii(args):
 
 def main(argv=None):
     argv = (argv or sys.argv)[1:]
-    parser = argparse.ArgumentParser()
-    parser.add_argument("source", type=str,
-                        help="either the path to an image on disk or a URL that points to the image")
-    parser.add_argument("--timeout", "-T", type=int, default="3", metavar="N",
+    # parser = argparse.ArgumentParser(conflict_handler="resolve")
+    parser = argparse.ArgumentParser(add_help=False)
+
+
+    # Positional
+    pgroup = parser.add_argument_group("Positional Arguments")
+    pgroup.add_argument("source", type=str,
+                        help="Either the path to an image on disk or a URL that points to the image.")
+
+    # Options
+    ogroup = parser.add_argument_group("Options")
+    ogroup.add_argument("--timeout", "-T", type=int, default="3", metavar="N",
                         help="Set the max timeout in seconds for requesting a URL. Ignored otherwise. (Default: 3)")
-    parser.add_argument("--chars", "-C", type=str, default=" .,:;+*%#@", metavar="ABC",
+    ogroup.add_argument("--chars", "-C", type=str, default=" .,:;+*%#@", metavar="ABC",
                         help="The character set to use for the varying levels of pixel brightness.")
-    parser.add_argument("--out", "-o", type=str, metavar="FILE",
+    ogroup.add_argument("--out", "-o", type=str, metavar="FILE",
                         help="Instead of writing to stdout, dump to the provided file (WILL OVERWRITE EXISTING FILE).")
 
-    # Booleans
-    parser.add_argument("--fg", action=argparse.BooleanOptionalAction, default=True,
-                        help="Whether to use the pixel colors in the foreground of the ASCII. (Default: True)")
-    parser.add_argument("--bg", action=argparse.BooleanOptionalAction, default=False,
-                        help="Whether to use the pixel colors in the background of the ASCII. (Default: False)")
-    parser.add_argument("--force-size", action="store_true",
-                        help="This forces the image to be resized without any regard to aspect ratio. (Yes, this will \
-                              squash your image. If it were perfectly square, you wouldn't need to to do this.).")
-    parser.add_argument("--quiet", "-q", action="store_true",
-                        help="Do not print anything to stdout (Default: False).")
-
     # Dimension group
-    dgroup = parser.add_mutually_exclusive_group(required=False)
+    dgroup = parser.add_argument_group("Size Options")
+    dgroup = dgroup.add_mutually_exclusive_group(required=False)
     dgroup.add_argument("--width", "-x", type=int, metavar="X",
                         help="Force width to X, preserving aspect ratio. This is useful for ensuring that the final \
                               ASCII rendition will fit within a given width.")
     dgroup.add_argument("--height", "-y", type=int, metavar="Y",
                         help="Force height to Y, preserving aspect ratio. This is useful for ensuring that the final \
                               ASCII rendition will fit within a given height.")
-    dgroup.add_argument("--size", type=int, nargs=2, default=(100, 100),
+    dgroup.add_argument("--size", type=int, nargs=2, default=(100, 100), metavar=("X", "Y"),
                         help="Resize the image to X width by Y height, preserving aspect ratio. If you need to resize \
                               while NOT preserving the aspect ratio, add the boolean option --force-size.")
 
+    # Booleans
+    bgroup = parser.add_argument_group("True/False Flags")
+    bgroup.add_argument("--fg", action=argparse.BooleanOptionalAction, default=True,
+                        help="Whether to use the pixel colors in the foreground of the ASCII. (Default: True)")
+    bgroup.add_argument("--bg", action=argparse.BooleanOptionalAction, default=False,
+                        help="Whether to use the pixel colors in the background of the ASCII. (Default: False)")
+    bgroup.add_argument("--force-size", action="store_true",
+                        help="This forces the image to be resized without any regard to aspect ratio. (Yes, this will \
+                              squash your image. If it were perfectly square, you wouldn't need to to do this.).")
+    bgroup.add_argument("--quiet", "-q", action="store_true",
+                        help="Do not print anything to stdout (Default: False).")
+    bgroup.add_argument("--help", "-h", action="help",
+                        help="Show this help message and exit.")
+
     args = parser.parse_args(argv)
     return convert_image_to_ascii(args)
+
 
 if __name__ == "__main__":
     exit(main())
