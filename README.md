@@ -7,6 +7,7 @@ Image obtained from: https://emoji.gg/emoji/6898-awoo
 [<img src="images/preview.png">](https://github.com/H4CKY54CK/python-ascii-renderer/blob/main/images/preview.png)
 
 ## Usage (Needs Rewritten)
+```
 usage: img2ascii.py [--timeout N] [--chars ABC] [--out FILE] [--width X | --height Y | --size X Y] [--fg | --no-fg] [--bg | --no-bg] [--force-size] [--quiet] [--help] source
 
 Positional Arguments:
@@ -28,5 +29,7 @@ True/False Flags:
   --force-size         This forces the image to be resized without any regard to aspect ratio. (Yes, this will squash your image. If it were perfectly square, you wouldn't need to to do this.).
   --quiet, -q          Do not print anything to stdout (Default: False).
   --help, -h           Show this help message and exit.
+```
+
 ## A few notes
 There might be some unused variables even though I gave it a once-over before pushing this to the repo. When (not if) you find something incorrect, feel free to mention it. I just may not prioritize a fix, since nobody is really relying on this for anything.
