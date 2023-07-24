@@ -2,7 +2,7 @@
 This Python script just takes an image, resizes it, and converts it to colored ASCII. Beware, it relies on truecolor support.
 
 ## Preview
-[[https://github.com/H4CKY54CK/python-ascii-renderer/blob/main/images/help-menu.png|Help Menu Preview]]
+[[https://github.com/H4CKY54CK/python-ascii-renderer/blob/main/images/help-menu.png|alt=Help Menu Preview]]
 
 ## Usage (Needs Rewritten)
 First off, it requires `pillow`. And that's the only 3rd party package needed.
