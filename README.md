@@ -6,7 +6,7 @@ Image obtained from: https://emoji.gg/emoji/6898-awoo
 [<img src="images/original.png">](https://github.com/H4CKY54CK/python-ascii-renderer/blob/main/images/original.png)  
 [<img src="images/preview.png">](https://github.com/H4CKY54CK/python-ascii-renderer/blob/main/images/preview.png)  
 
-## Usage (Needs Rewritten)
+## Usage
 ```
 usage: img2ascii.py [--timeout N] [--chars ABC] [--out FILE] [--width X | --height Y | --size X Y] [--fg | --no-fg] [--bg | --no-bg] [--force-size] [--quiet] [--help] source
 
