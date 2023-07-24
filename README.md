@@ -2,9 +2,9 @@
 This Python script just takes an image, resizes it, and converts it to colored ASCII. Beware, it relies on truecolor support.
 
 ## Preview
-Image obtained from: https://emoji.gg/emoji/6898-awoo
-[<img src="images/original.png">](https://github.com/H4CKY54CK/python-ascii-renderer/blob/main/images/original.png)
-[<img src="images/preview.png">](https://github.com/H4CKY54CK/python-ascii-renderer/blob/main/images/preview.png)
+Image obtained from: https://emoji.gg/emoji/6898-awoo  
+[<img src="images/original.png">](https://github.com/H4CKY54CK/python-ascii-renderer/blob/main/images/original.png)  
+[<img src="images/preview.png">](https://github.com/H4CKY54CK/python-ascii-renderer/blob/main/images/preview.png)  
 
 ## Usage (Needs Rewritten)
 ```
