@@ -2,7 +2,6 @@ import os
 import io
 import re
 import sys
-from types import SimpleNamespace
 import requests
 import argparse
 from PIL import Image
