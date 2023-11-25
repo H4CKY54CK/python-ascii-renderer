@@ -2,25 +2,34 @@ import os
 import io
 import re
 import sys
+from types import SimpleNamespace
 import requests
 import argparse
 from PIL import Image
 
 
 
-def convert_image_to_ascii(args):
+def _round(value):
+    ivalue = int(value)
+    rem = value - ivalue
+    if rem > .5:
+        return ivalue + 1
+    return ivalue
+
+
+def convert_image_to_ascii(source, size, *, bg=True, fg=False, chars=" .,:;+*%#@", force_size=False, timeout=3):
     # Allow images to be filepaths or URLs.
-    if re.match(r"(https?\:\/\/)(www\.)?", args.source):
+    if re.match(r"(https?\:\/\/)(www\.)?", source):
         try:
-            with requests.get(args.source, timeout=args.timeout) as res:
+            with requests.get(source, timeout=timeout) as res:
                 img = Image.open(io.BytesIO(res.content))
         except TimeoutError:
-            sys.stderr.write("[img2ascii error]: request has timed out after %s seconds\n" % (args.timeout,))
+            sys.stderr.write("[img2ascii error]: request has timed out after %s seconds\n" % (timeout,))
             return 1
-    elif os.path.exists(args.source):
-        img = Image.open(args.source)
+    elif os.path.exists(source):
+        img = Image.open(source)
     else:
-        sys.stderr.write("[img2ascii error]: invalid path: %r\n" % (args.source,))
+        sys.stderr.write("[img2ascii error]: invalid path: %r\n" % (source,))
         return 1
 
     # It may seem strange to convert it to itself, but it solves a specific downsampling quality loss issue.
@@ -34,39 +43,46 @@ def convert_image_to_ascii(args):
         return 1
 
     # Basic check for correct size format
-    if args.width or args.height:
-        img.thumbnail((args.width or img.width, args.height or img.height))
-    elif not args.force_size:
-        img.thumbnail(args.size)
+    width, height = size or (None, None)
+    if (width and not height) or (height and not width):
+        img.thumbnail((width or img.width, height or img.height))
+    elif not force_size:
+        img.thumbnail(size)
     else:
-        img = img.resize(args.size)
+        img = img.resize(size)
 
     pixels = img.load()
     data = [["" for _ in range(img.width)] for _ in range(img.height)]
 
-    fgbg = (38 if args.fg else None, 48 if args.bg else None)
+    fgbg = (38 if fg else None, 48 if bg else None)
     for x in range(img.width):
         for y in range(img.height):
             r, g, b, a = pixels[x,y]
 
             # Get appropriate "pixel" from charset.
-            a = int(a // 2.55 // (len(args.chars) + 1))
-            c = args.chars[a]
+            a = _round(a / 255 * (len(chars) - 1))
+            print(a, len(chars))
+            c = chars[a]
 
             data[y][x] = "".join("\x1b[%d;2;%d;%d;%dm" % (z, r, g, b) for z in fgbg if z is not None) + c
 
     # Add a bold prefix and reset suffix to each line. It's called responsibility.
-    res = "\n".join("\x1b[1m" + " ".join(row) + "\x1b[m" for row in data)
+    return "\n".join("\x1b[1m" + " ".join(row) + "\x1b[m" for row in data)
 
-    if isinstance(args.out, str):
+
+def driver(args):
+    if args.width or args.height:
+        args.size = (args.width, args.height)
+    kwargs = {key: val for key, val in args._get_kwargs() if key not in ("width", "height", "out", "quiet") and val is not None}
+    result = convert_image_to_ascii(**kwargs)
+    if args.out:
         with open(args.out, "w") as f:
-            f.write(res + "\n")
+            f.write(result + "\n")
         if args.quiet is False:
             print("Wrote to file: %r" % (args.out,))
     else:
         if args.quiet is False:
-            print(res)
-
+            print(result)
     return 0
 
 
@@ -83,9 +99,9 @@ def main(argv=None):
 
     # Options
     ogroup = parser.add_argument_group("Options")
-    ogroup.add_argument("--timeout", "-T", type=int, default="3", metavar="N",
+    ogroup.add_argument("--timeout", "-T", type=int, metavar="N",
                         help="Set the max timeout in seconds for requesting a URL. Ignored otherwise. (Default: 3)")
-    ogroup.add_argument("--chars", "-C", type=str, default=" .,:;+*%#@", metavar="ABC",
+    ogroup.add_argument("--chars", "-C", type=str, metavar="ABC",
                         help="The character set to use for the varying levels of pixel brightness.")
     ogroup.add_argument("--out", "-o", type=str, metavar="FILE",
                         help="Instead of writing to stdout, dump to the provided file (WILL OVERWRITE EXISTING FILE).")
@@ -118,7 +134,7 @@ def main(argv=None):
                         help="Show this help message and exit.")
 
     args = parser.parse_args(argv)
-    return convert_image_to_ascii(args)
+    return driver(args)
 
 
 if __name__ == "__main__":
