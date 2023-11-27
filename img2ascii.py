@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import os
 import io
 import re
@@ -31,15 +33,9 @@ def convert_image_to_ascii(source, size, *, bg=True, fg=False, chars=" .,:;+*%#@
         sys.stderr.write("[img2ascii error]: invalid path: %r\n" % (source,))
         return 1
 
-    # It may seem strange to convert it to itself, but it solves a specific downsampling quality loss issue.
-    # Also, convert to RGBA if the image is RGB. That way, we have a default alpha value without any fuss.
-    if img.mode in ("RGB", "RGBA"):
-        img = img.convert("RGBA")
-    elif img.mode == "L":
-        img = img.convert("L")
-    else:
-        sys.stderr.write("[img2ascii error]: have not implemented mode %r yet\n" % (img.mode,))
-        return 1
+    # New plan. Convert to RGBA regardless, as that "specific downsampling quality loss issue" was actually just a gap
+    # in knowledge on my part. This hopefully now accomodates all images and image types that PIL supports.
+    img = img.convert("RGBA")
 
     # Basic check for correct size format
     width, height = size or (None, None)
@@ -60,7 +56,6 @@ def convert_image_to_ascii(source, size, *, bg=True, fg=False, chars=" .,:;+*%#@
 
             # Get appropriate "pixel" from charset.
             a = _round(a / 255 * (len(chars) - 1))
-            print(a, len(chars))
             c = chars[a]
 
             data[y][x] = "".join("\x1b[%d;2;%d;%d;%dm" % (z, r, g, b) for z in fgbg if z is not None) + c
