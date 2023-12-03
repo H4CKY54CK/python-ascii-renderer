@@ -18,7 +18,7 @@ def _round(value):
     return ivalue
 
 
-def convert_image_to_ascii(source, size, *, bg=True, fg=False, chars=" .,:;+*%#@", force_size=False, timeout=3):
+def convert_image_to_ascii(source, size, *, bg=False, fg=True, chars=" .,:;+*%#@", force_size=False, timeout=3):
     # Allow images to be filepaths or URLs.
     if re.match(r"(https?\:\/\/)(www\.)?", source):
         try:
