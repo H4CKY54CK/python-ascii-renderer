@@ -1,4 +1,5 @@
 import os
+import sys
 import cv2
 import time
 import numpy
@@ -76,9 +77,7 @@ def convert_video_to_ascii(source):
 
 
 def main():
-    filename = "./videos/test.mp4"
-    filename = "/home/hacky/Videos/Recordings/simplescreenrecorder-2023-11-04_20.15.52.mp4"
-    convert_video_to_ascii(filename)
+    convert_video_to_ascii(sys.argv[1])
 
 
 if __name__ == '__main__':
