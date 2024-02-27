@@ -57,10 +57,6 @@ def convert_video_to_ascii(source):
     fps = vid.get(cv2.CAP_PROP_FPS)
     delay = 1 / fps
     last = time.time()
-    print(f"Frames: {nframes}")
-    print(f"FPS: {fps}")
-    print(f"Delay: {delay}")
-    # exit()
     print(f"\x1b[2J\x1b[H\x1b[s")
     while True:
         success, frame = vid.read()
