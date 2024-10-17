@@ -6,7 +6,8 @@ import re
 import sys
 import requests
 import argparse
-from PIL import Image
+import itertools
+from PIL import Image, ImageFile
 
 
 
@@ -18,9 +19,24 @@ def _round(value):
     return ivalue
 
 
+def get_frames(source, save=False, dest=None):
+    result = []
+    with Image.open(source) as img:
+        for i in range(img.n_frames):
+            img.seek(i)
+            frame = img.copy()
+            fdata = {"frame": frame, "duration": img.info["duration"],}
+            result.append(fdata)
+    return result
+
+
 def convert_image_to_ascii(source, size, *, bg=False, fg=True, chars=" .,:;+*%#@", force_size=False, timeout=3):
-    # Allow images to be filepaths or URLs.
-    if re.match(r"(https?\:\/\/)(www\.)?", source):
+    # if isinstance(source, np.ndarray):
+    #     img = Image.fromarray(source)
+    if isinstance(source, ImageFile.ImageFile):
+        img = source.copy()
+        source.close()
+    elif re.match(r"(https?\:\/\/)(www\.)?", source):
         try:
             with requests.get(source, timeout=timeout) as res:
                 img = Image.open(io.BytesIO(res.content))
@@ -33,8 +49,7 @@ def convert_image_to_ascii(source, size, *, bg=False, fg=True, chars=" .,:;+*%#@
         sys.stderr.write("[img2ascii error]: invalid path: %r\n" % (source,))
         return 1
 
-    # New plan. Convert to RGBA regardless, as that "specific downsampling quality loss issue" was actually just a gap
-    # in knowledge on my part. This hopefully now accomodates all images and image types that PIL supports.
+    # Normalize the mode
     img = img.convert("RGBA")
 
     # Basic check for correct size format
@@ -46,37 +61,53 @@ def convert_image_to_ascii(source, size, *, bg=False, fg=True, chars=" .,:;+*%#@
     else:
         img = img.resize(size)
 
-    pixels = img.load()
-    data = [["" for _ in range(img.width)] for _ in range(img.height)]
+    # This works and is faster than list(img.getdata())
+    #pixels = list(itertools.batched(img.tobytes(), len(img.getbands())))
+    # But this is easier and probably more reliable lol
+    pixels = list(img.getdata())
+    data = []
 
     fgbg = (38 if fg else None, 48 if bg else None)
-    for x in range(img.width):
-        for y in range(img.height):
-            r, g, b, a = pixels[x,y]
+    for pixel in pixels:
+        r, g, b, a = pixel
 
-            # Get appropriate "pixel" from charset.
-            a = _round(a / 255 * (len(chars) - 1))
-            c = chars[a]
+        # Get appropriate "pixel" from charset.
+        a = _round(a / 255 * (len(chars) - 1))
+        c = chars[a]
 
-            data[y][x] = "".join("\x1b[%d;2;%d;%d;%dm" % (z, r, g, b) for z in fgbg if z is not None) + c
+        data.append("".join("\x1b[%d;2;%d;%d;%dm" % (z, r, g, b) for z in fgbg if z is not None) + c)
 
-    # Add a bold prefix and reset suffix to each line. It's called responsibility.
-    return "\n".join("\x1b[1m" + " ".join(row) + "\x1b[m" for row in data)
+    # Add a "bold" prefix and "reset" suffix to each line. It's called responsibility.
+    return "\n".join("\x1b[1m" + " ".join(row) + "\x1b[m" for row in itertools.batched(data, img.width))
 
 
 def driver(args):
     if args.width or args.height:
         args.size = (args.width, args.height)
     kwargs = {key: val for key, val in args._get_kwargs() if key not in ("width", "height", "out", "quiet") and val is not None}
-    result = convert_image_to_ascii(**kwargs)
-    if args.out:
-        with open(args.out, "w") as f:
-            f.write(result + "\n")
-        if args.quiet is False:
-            print("Wrote to file: %r" % (args.out,))
+
+    if not args.source.casefold().endswith(".gif"):
+        result = convert_image_to_ascii(**kwargs)
+        if args.out:
+            with open(args.out, "w") as f:
+                f.write(result + "\n")
+            if args.quiet is False:
+                print("Wrote to file: %r" % (args.out,))
+        else:
+            if args.quiet is False:
+                print(result)
     else:
-        if args.quiet is False:
-            print(result)
+        frames = get_frames(args.source)
+        last = time.ti
+        for entry in frames:
+            frame = entry["frame"]
+            duration = entry["duration"]
+            kw = kwargs | {"source": frame}
+            converted = convert_image_to_ascii(**kw)
+            # # Smart delay
+            # while time.time() -last < duration  / 1000:
+            #     time.sleep(.01)
+
     return 0
 
 
