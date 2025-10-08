@@ -8,7 +8,7 @@ import time
 import requests
 import argparse
 import itertools
-from PIL import Image, ImageFile
+from PIL import Image
 
 
 
