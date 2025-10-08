@@ -4,6 +4,7 @@ import os
 import io
 import re
 import sys
+import time
 import requests
 import argparse
 import itertools
@@ -30,10 +31,16 @@ def get_frames(source, save=False, dest=None):
     return result
 
 
+def error_msg(msg):
+    nbytes = sys.stderr.write("%s" % msg)
+    sys.stderr.flush()
+    return nbytes
+
+
 def convert_image_to_ascii(source, size, *, bg=False, fg=True, chars=" .,:;+*%#@", force_size=False, timeout=3):
     # if isinstance(source, np.ndarray):
     #     img = Image.fromarray(source)
-    if isinstance(source, ImageFile.ImageFile):
+    if isinstance(source, Image.Image):
         img = source.copy()
         source.close()
     elif re.match(r"(https?\:\/\/)(www\.)?", source):
@@ -41,12 +48,12 @@ def convert_image_to_ascii(source, size, *, bg=False, fg=True, chars=" .,:;+*%#@
             with requests.get(source, timeout=timeout) as res:
                 img = Image.open(io.BytesIO(res.content))
         except TimeoutError:
-            sys.stderr.write("[img2ascii error]: request has timed out after %s seconds\n" % (timeout,))
+            error_msg("[img2ascii error]: request has timed out after %s seconds\n" % (timeout,))
             return 1
     elif os.path.exists(source):
         img = Image.open(source)
     else:
-        sys.stderr.write("[img2ascii error]: invalid path: %r\n" % (source,))
+        error_msg("[img2ascii error]: invalid path: %r\n" % (source,))
         return 1
 
     # Normalize the mode
@@ -97,8 +104,9 @@ def driver(args):
             if args.quiet is False:
                 print(result)
     else:
+        print("\x1b[s", end="")
         frames = get_frames(args.source)
-        last = time.ti
+        last = time.time()
         for entry in frames:
             frame = entry["frame"]
             duration = entry["duration"]
@@ -107,6 +115,9 @@ def driver(args):
             # # Smart delay
             # while time.time() -last < duration  / 1000:
             #     time.sleep(.01)
+            print("\x1b[u", end="")
+            print(converted)
+            time.sleep(duration / 1000)
 
     return 0
 
