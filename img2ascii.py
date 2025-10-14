@@ -5,10 +5,12 @@ import io
 import re
 import sys
 import time
+import math
+import shutil
 import requests
 import argparse
 import itertools
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 
@@ -37,12 +39,12 @@ def error_msg(msg):
     return nbytes
 
 
-def convert_image_to_ascii(source, size, *, bg=False, fg=True, chars=" .,:;+*%#@", force_size=False, timeout=3):
+def convert_image_to_ascii(source, size, *, bg=False, fg=True, chars=" .,:;+*%#@", force_size=False, timeout=3, autofit=False):
     # if isinstance(source, np.ndarray):
     #     img = Image.fromarray(source)
     if isinstance(source, Image.Image):
         img = source.copy()
-        source.close()
+        # source.close()
     elif re.match(r"(https?\:\/\/)(www\.)?", source):
         try:
             with requests.get(source, timeout=timeout) as res:
@@ -60,13 +62,17 @@ def convert_image_to_ascii(source, size, *, bg=False, fg=True, chars=" .,:;+*%#@
     img = img.convert("RGBA")
 
     # Basic check for correct size format
-    width, height = size or (None, None)
-    if (width and not height) or (height and not width):
-        img.thumbnail((width or img.width, height or img.height))
-    elif not force_size:
-        img.thumbnail(size)
+    if autofit:
+        width, height = os.get_terminal_size()
+        img = ImageOps.contain(img, (width, height))
     else:
-        img = img.resize(size)
+        width, height = size or (None, None)
+        if (width and not height) or (height and not width):
+            img.thumbnail((width or img.width, height or img.height))
+        elif not force_size:
+            img.thumbnail(size)
+        else:
+            img = img.resize(size)
 
     # This works and is faster than list(img.getdata())
     #pixels = list(itertools.batched(img.tobytes(), len(img.getbands())))
@@ -84,11 +90,13 @@ def convert_image_to_ascii(source, size, *, bg=False, fg=True, chars=" .,:;+*%#@
 
         data.append("".join("\x1b[%d;2;%d;%d;%dm" % (z, r, g, b) for z in fgbg if z is not None) + c)
 
+    img.close()
+
     # Add a "bold" prefix and "reset" suffix to each line. It's called responsibility.
     return "\n".join("\x1b[1m" + " ".join(row) + "\x1b[m" for row in itertools.batched(data, img.width))
 
 
-def driver(args):
+def main(args):
     if args.width or args.height:
         args.size = (args.width, args.height)
     kwargs = {key: val for key, val in args._get_kwargs() if key not in ("width", "height", "out", "quiet") and val is not None}
@@ -104,27 +112,42 @@ def driver(args):
             if args.quiet is False:
                 print(result)
     else:
-        print("\x1b[s", end="")
+        sys.stdout.write("\x1b[H\x1b[s")
+        sys.stdout.flush()
         frames = get_frames(args.source)
         last = time.time()
-        for entry in frames:
-            frame = entry["frame"]
-            duration = entry["duration"]
-            kw = kwargs | {"source": frame}
-            converted = convert_image_to_ascii(**kw)
-            # # Smart delay
-            # while time.time() -last < duration  / 1000:
-            #     time.sleep(.01)
-            print("\x1b[u", end="")
-            print(converted)
-            time.sleep(duration / 1000)
+        total = sum(i["duration"] for i in frames) / 1000
+        # Play for at least 5 seconds
+        loops = 5 / total
+        if loops < 1:
+            loops = 1
+        loops = math.ceil(loops)
+        last = 0
+        timestamps = []
+        for _ in range(loops):
+            for entry in frames:
+                frame = entry["frame"]
+                duration = entry["duration"]
+                kw = kwargs | {"source": frame}
+                converted = convert_image_to_ascii(**kw)
+                sys.stdout.write("\x1b[2J\x1b[u%s" % (converted,))
+                sys.stdout.flush()
+                delay = duration / 1000
+                # While it hasn't been 'delay' since 'last'
+                while True:
+                    now = time.time()
+                    if now > last + delay:
+                        break
+                    # Sleep for 100 µs
+                    time.sleep(.0001)
+                timestamps.append(now)
+                # Set last
+                last = now
 
     return 0
 
 
-def main(argv=None):
-    argv = (argv or sys.argv)[1:]
-    # parser = argparse.ArgumentParser(conflict_handler="resolve")
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(add_help=False)
 
 
@@ -157,6 +180,8 @@ def main(argv=None):
 
     # Booleans
     bgroup = parser.add_argument_group("True/False Flags")
+    bgroup.add_argument("--autofit", "-F", action="store_true",
+                        help="Fit the final render to the terminal size (preserves aspect ratio).")
     bgroup.add_argument("--fg", action=argparse.BooleanOptionalAction, default=True,
                         help="Whether to use the pixel colors in the foreground of the ASCII. (Default: True)")
     bgroup.add_argument("--bg", action=argparse.BooleanOptionalAction, default=False,
@@ -169,9 +194,21 @@ def main(argv=None):
     bgroup.add_argument("--help", "-h", action="help",
                         help="Show this help message and exit.")
 
-    args = parser.parse_args(argv)
-    return driver(args)
+    args = parser.parse_args()
 
+    ret = 0
+    try:
+        # sys.stdout.write("\x1b[?1049h")
+        sys.stdout.write("\x1b[?47h")
+        sys.stdout.flush()
+        main(args)
+    except KeyboardInterrupt as e:
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        ret = 1
+    finally:
+        sys.stdout.write("\x1b[2J\x1b[?47l")
+        # sys.stdout.write("\x1b[?1049l")
+        sys.stdout.flush()
 
-if __name__ == "__main__":
-    exit(main())
+    sys.exit(ret)
