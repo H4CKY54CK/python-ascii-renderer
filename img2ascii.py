@@ -10,7 +10,7 @@ import shutil
 import requests
 import argparse
 import itertools
-from PIL import Image, ImageOps
+from PIL import Image, ImageSequence, ImageOps
 
 
 
@@ -39,24 +39,21 @@ def error_msg(msg):
     return nbytes
 
 
-def convert_image_to_ascii(source, size, *, bg=False, fg=True, chars=" .,:;+*%#@", force_size=False, timeout=3, autofit=False):
-    # if isinstance(source, np.ndarray):
-    #     img = Image.fromarray(source)
-    if isinstance(source, Image.Image):
-        img = source.copy()
-        # source.close()
-    elif re.match(r"(https?\:\/\/)(www\.)?", source):
-        try:
-            with requests.get(source, timeout=timeout) as res:
-                img = Image.open(io.BytesIO(res.content))
-        except TimeoutError:
-            error_msg("[img2ascii error]: request has timed out after %s seconds\n" % (timeout,))
-            return 1
-    elif os.path.exists(source):
-        img = Image.open(source)
-    else:
-        error_msg("[img2ascii error]: invalid path: %r\n" % (source,))
-        return 1
+def convert_image_to_ascii(img, *, size, bg=False, fg=True, chars=" .,:;+*%#@", force_size=False, timeout=3, autofit=False):
+    # # if isinstance(source, np.ndarray):
+    # #     img = Image.fromarray(source)
+    # elif re.match(r"(https?\:\/\/)(www\.)?", source):
+    #     try:
+    #         with requests.get(source, timeout=timeout) as res:
+    #             img = Image.open(io.BytesIO(res.content))
+    #     except TimeoutError:
+    #         error_msg("[img2ascii error]: request has timed out after %s seconds\n" % (timeout,))
+    #         return 1
+    # elif os.path.exists(source):
+    #     img = Image.open(source)
+    # else:
+    #     error_msg("[img2ascii error]: invalid path: %r\n" % (source,))
+    #     return 1
 
     # Normalize the mode
     img = img.convert("RGBA")
@@ -99,10 +96,19 @@ def convert_image_to_ascii(source, size, *, bg=False, fg=True, chars=" .,:;+*%#@
 def main(args):
     if args.width or args.height:
         args.size = (args.width, args.height)
-    kwargs = {key: val for key, val in args._get_kwargs() if key not in ("width", "height", "out", "quiet") and val is not None}
+    kwargs = {key: val for key, val in args._get_kwargs() if key not in ("width", "height", "out", "quiet", "source") and val is not None}
 
-    if not args.source.casefold().endswith(".gif"):
-        result = convert_image_to_ascii(**kwargs)
+    source = args.source
+
+    if source.startswith(("http://", "https://")):
+        with requests.get(source) as res:
+            raw = io.BytesIO(res.content)
+        img = Image.open(raw)
+    elif os.path.exists(source):
+        img = Image.open(source)
+
+    if not img.is_animated:
+        result = convert_image_to_ascii(img, **kwargs)
         if args.out:
             with open(args.out, "w") as f:
                 f.write(result + "\n")
@@ -111,12 +117,17 @@ def main(args):
         else:
             if args.quiet is False:
                 print(result)
-    else:
+        return
+
+    errors = []
+
+    try:
+        sys.stdout.write("\x1b[?47h")
         sys.stdout.write("\x1b[H\x1b[s")
         sys.stdout.flush()
-        frames = get_frames(args.source)
+        frames = ImageSequence.all_frames(img)
         last = time.time()
-        total = sum(i["duration"] for i in frames) / 1000
+        total = sum(i.info["duration"] for i in frames) / 1000
         # Play for at least 5 seconds
         loops = 5 / total
         if loops < 1:
@@ -125,10 +136,9 @@ def main(args):
         last = 0
         timestamps = []
         for _ in range(loops):
-            for entry in frames:
-                frame = entry["frame"]
-                duration = entry["duration"]
-                kw = kwargs | {"source": frame}
+            for frame in frames:
+                duration = frame.info["duration"]
+                kw = kwargs | {"img": frame}
                 converted = convert_image_to_ascii(**kw)
                 sys.stdout.write("\x1b[2J\x1b[u%s" % (converted,))
                 sys.stdout.flush()
@@ -143,6 +153,18 @@ def main(args):
                 timestamps.append(now)
                 # Set last
                 last = now
+
+    except KeyboardInterrupt as e:
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        errors.append(e)
+
+    finally:
+        sys.stdout.write("\x1b[2J\x1b[?47l")
+        sys.stdout.flush()
+
+    for error in errors:
+        print(error)
 
     return 0
 
@@ -196,19 +218,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ret = 0
-    try:
-        # sys.stdout.write("\x1b[?1049h")
-        sys.stdout.write("\x1b[?47h")
-        sys.stdout.flush()
-        main(args)
-    except KeyboardInterrupt as e:
-        sys.stdout.write("\n")
-        sys.stdout.flush()
-        ret = 1
-    finally:
-        sys.stdout.write("\x1b[2J\x1b[?47l")
-        # sys.stdout.write("\x1b[?1049l")
-        sys.stdout.flush()
-
-    sys.exit(ret)
+    sys.exit(main(args))
