@@ -5,6 +5,25 @@ import time
 import numpy
 from PIL import Image
 import sys
+import argparse
+
+
+
+def sprint(*args, sep=" ", end="\n", file=None):
+    if file is None:
+        file = sys.stdout
+    nbytes = file.write("%s%s" % (sep.join(map(str, args)), end))
+    file.flush()
+    return nbytes
+
+def eprint(*args, sep=" ", end="\n", file=None):
+    if file is None:
+        file = sys.stderr
+    nbytes = file.write("%s%s" % (sep.join(map(str, args)), end))
+    file.flush()
+    return nbytes
+
+
 
 
 
@@ -57,7 +76,7 @@ def convert_video_to_ascii(source):
     fps = vid.get(cv2.CAP_PROP_FPS)
     delay = 1 / fps
     last = time.time()
-    print(f"\x1b[2J\x1b[H\x1b[s")
+
     while True:
         success, frame = vid.read()
         if not success:
@@ -67,14 +86,50 @@ def convert_video_to_ascii(source):
             time.sleep(.001)
             pass
         last = last + delay
-        print(f"\x1b[u{ascii_frame}")
+        sys.stdout.write("\x1b[2J\x1b[u%s" % (ascii_frame,))
 
 
 
+## Script start
+def main(args):
+    errors = []
 
-def main():
-    convert_video_to_ascii(sys.argv[1])
+    try:
+        sys.stdout.write("\x1b[?47h")
+        sys.stdout.write("\x1b[H\x1b[s")
+
+        convert_video_to_ascii(args.source)
+
+    except KeyboardInterrupt as e:
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+        errors.append(e)
+
+    finally:
+        sys.stdout.write("\x1b[2J\x1b[?47l")
+        sys.stdout.flush()
+
+    for error in errors:
+        print(error)
+
+    return 0
+
+
+
+class CustomHelp(argparse.HelpFormatter):
+    def add_usage(self, usage, actions, groups, prefix=None):
+        return super().add_usage(usage, actions, groups, prefix="Usage: ")
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(add_help=False, color=False, formatter_class=CustomHelp)
+
+    positional = parser.add_argument_group("Positionals")
+    positional.add_argument("source", help="Path to SOURCE file(s)?")
+
+    optional = parser.add_argument_group("Optionals")
+    optional.add_argument("--help", "-h", action="help", help="Show this help message and exit.")
+
+    args = parser.parse_args()
+
+    sys.exit(main(args))
